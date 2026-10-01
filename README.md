@@ -19,3 +19,12 @@ LLM_MODEL=qwen2.5-fast:latest uv run python -m eval.harness baseline --limit 2
 Golden set row: `{"id", "type": "identifier|concept|multi-hop", "question", "expected": [keywords], "sources": [file names]}`.
 Answer counts as correct when every expected keyword appears (case-insensitive). `hit@k` is
 whether a gold source file is among the first k retrieved sources (null for no-retrieval pipelines).
+
+## Running itinerary (PDF)
+
+Week-by-week plan with checklists, assignments, quizzes (answer key at the end) and architect questions.
+Update progress in `itinerary/plan.toml` (status, hours, quiz_score, `[x] ` on tasks), then rebuild:
+
+```bash
+uv run python itinerary/build.py   # -> itinerary/itinerary.pdf, pulls latest results/ and notes/adr/
+```

@@ -1,0 +1,1107 @@
+# Running itinerary: edit progress fields, then rebuild:
+#   uv run python itinerary/build.py
+#
+# Per week, update:  status = "todo" | "in-progress" | "done"
+#                    hours  = hours actually spent
+#                    quiz_score = "3/4"     completed = "2026-10-04"
+#                    notes  = "anything worth remembering"
+# Mark a task done by prefixing it with "[x] ".
+# Quiz answers are indices into options (0 = A). The answer key prints at the end of the PDF.
+
+title = "AI Architect Learning Path: Running Itinerary"
+start_date = 2026-09-28   # Monday of week 1
+hours_per_week = 15
+
+week_rhythm = [
+  "Session 1 (2h): reading + quiz without notes",
+  "Sessions 2-4 (10h): build from scratch, then compare against the library/tool",
+  "Session 5 (3h): run eval harness, fill measured table, write ADR + client note, answer discussion questions",
+]
+
+# ─────────────────────────────── PHASE 0 ───────────────────────────────
+[[week]]
+n = 1
+phase = "Phase 0: Setup & Baseline"
+title = "Measurement baseline"
+levels = "Setup"
+status = "in-progress"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Working environment: uv, Ollama, eval harness",
+  "Your own corpus chosen and checked in",
+  "A 40-question golden set and a baseline number on the board",
+]
+reading = [
+  "Hamel Husain: 'Your AI Product Needs Evals' (hamel.dev, 2024)",
+  "Ollama API docs: /api/chat and the options object",
+]
+tasks = [
+  "[x] Repo, uv project, eval harness, baseline pipeline",
+  "Pick a corpus you know well (20-100 docs): notes, internal docs, or a codebase",
+  "Write 40 golden questions: >=13 identifier, >=20 concept, a few multi-hop",
+  "Run the full baseline: `uv run python -m eval.harness baseline`",
+  "Write ADR-0001: corpus choice and eval method (including its weaknesses)",
+]
+assignment = "Golden set v1 + baseline report."
+acceptance = [
+  "40 valid rows in `eval/golden.jsonl`; every `sources` file exists in `corpus/`",
+  "Baseline summary pasted into ADR-0001",
+  "ADR-0001 names two ways keyword scoring can be wrong",
+]
+questions = [
+  "A client says 'we will evaluate by vibes in UAT'. Write your 3-sentence pushback and the minimum eval you would propose instead.",
+  "SMEs can give you 2 hours total. How do you get a useful golden set out of them?",
+]
+[[week.quiz]]
+q = "Why build the eval set before writing any retrieval code?"
+options = ["Ollama requires it", "Without a fixed measure you cannot tell whether a change helped", "It speeds up inference", "It makes the model deterministic"]
+answer = 1
+why = "Every later level is a claimed improvement; the golden set is what turns a claim into a number."
+[[week.quiz]]
+q = "The baseline scored 0/5 on questions about the blueprint. The main reason:"
+options = ["Temperature 0", "The model never saw the document, so it guessed (hallucinated)", "The scorer is case-sensitive", "num_ctx 2048 is too small"]
+answer = 1
+why = "The scorer lowercases both sides. The answers were confident fabrications: exactly the failure RAG exists to fix."
+[[week.quiz]]
+q = "A weakness of keyword-match scoring:"
+options = ["It is slow", "A correct paraphrase can fail and a wrong answer containing the keyword can pass", "It needs a GPU", "It cannot read JSONL"]
+answer = 1
+why = "Keyword match is cheap and deterministic but measures surface form; week 7 adds an LLM judge to cover meaning."
+[[week.quiz]]
+q = "Temperature 0 in eval runs mainly serves to:"
+options = ["Eliminate hallucinations", "Make runs (near-)reproducible so score changes reflect pipeline changes", "Speed up generation", "Reduce RAM use"]
+answer = 1
+why = "Greedy decoding removes sampling noise. It is not perfectly deterministic (float/batching effects) and does nothing for factuality."
+
+# ─────────────────────────────── PHASE 1 ───────────────────────────────
+[[week]]
+n = 2
+phase = "Phase 1: Foundations -> Stack 1"
+title = "Structural chunking + BM25 retrieval"
+levels = "P1 L1"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Chunks that respect document structure, with breadcrumbs",
+  "BM25 from scratch: first hit@k number",
+]
+reading = [
+  "Python `ast` module docs (NodeVisitor, get_docstring, end_lineno)",
+  "Robertson & Zaragoza (2009): The Probabilistic Relevance Framework: BM25 and Beyond, sections 3-3.5",
+  "Liu et al. (2023): Lost in the Middle: How Language Models Use Long Contexts",
+]
+tasks = [
+  "Markdown chunker: split on header hierarchy; metadata `breadcrumbs`, `parent_section`, `token_count`",
+  "Code chunker with `ast`: one chunk per function/class, keep decorators + docstring",
+  "Recursive fallback for oversize sections: paragraph -> sentence; cap ~300 tokens (num_ctx is 2048)",
+  "BM25 from scratch (k1=1.5, b=0.75); cross-check top-5 against `rank_bm25` on 10 queries",
+  "`pipelines/chunk_bm25.py`: top-5 chunks into the prompt; return chunk source paths",
+  "Compare with naive 500-char slicing on hit@5",
+]
+assignment = "`pipelines/chunk_bm25.py` with a structural chunker and from-scratch BM25."
+acceptance = [
+  "hit@5 reported and answer_acc beats baseline",
+  "Self-check: no chunk splits a Python function; every chunk <= 300 tokens",
+  "Own BM25 top-5 == `rank_bm25` top-5 on the 10 check queries",
+  "ADR-0002: chunking strategy, with structural vs naive numbers",
+]
+questions = [
+  "A client has 200k PDFs full of tables. Which chunking problems do you expect and what do you test first?",
+  "When is fixed-size chunking actually good enough?",
+]
+[[week.quiz]]
+q = "Main benefit of chunking on structural boundaries rather than fixed windows:"
+options = ["Fewer chunks overall", "Retrieved chunks are self-contained units (a function, a section)", "Faster embedding", "Required by BM25"]
+answer = 1
+why = "Fixed windows cut definitions in half; the model then sees a fragment without the context that makes it answerable."
+[[week.quiz]]
+q = "Why prepend breadcrumbs ('Path 1 > Level 2 > Deliverable') to a chunk?"
+options = ["It compresses the chunk", "It adds context terms the chunk lacks, helping both matching and grounding", "BM25 ignores it anyway", "It sorts chunks alphabetically"]
+answer = 1
+why = "A section body often never repeats its own heading; breadcrumbs put those terms back in."
+[[week.quiz]]
+q = "In BM25, parameter b controls:"
+options = ["Term-frequency saturation", "Document-length normalization", "IDF smoothing", "How many results are returned"]
+answer = 1
+why = "b in [0,1] scales how much long documents are penalized; k1 controls how fast repeated terms saturate."
+[[week.quiz]]
+q = "With num_ctx 2048 and top-5 retrieval, a sensible chunk cap is roughly:"
+options = ["2000 tokens", "~300 tokens", "50 tokens", "No cap: Ollama extends context automatically"]
+answer = 1
+why = "5 x 300 = 1500, leaving room for instructions, question and answer. Ollama does not extend context; it truncates the prompt (warning only in the server log)."
+
+[[week]]
+n = 3
+phase = "Phase 1: Foundations -> Stack 1"
+title = "Logits & sampling + schema guard"
+levels = "P2 L1 [Working] · P4 L1"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Generate text token-by-token from raw logits",
+  "Guarantee output shape with Pydantic + retry",
+]
+reading = [
+  "Holtzman et al. (2020): The Curious Case of Neural Text Degeneration (nucleus sampling)",
+  "Hugging Face docs: Generation strategies",
+  "Pydantic v2 docs: models, validators, `model_json_schema()`",
+  "Ollama docs: structured outputs (`format` with a JSON schema)",
+]
+tasks = [
+  "Install CPU-only torch + transformers; load `Qwen2.5-0.5B-Instruct`",
+  "Manual loop: forward -> last logits -> temperature -> top-k -> top-p -> sample; print top-10 tokens + probs per step",
+  "Check greedy manual loop == `generate(do_sample=False)` for 50 tokens",
+  "Time the loop without and with `past_key_values` (preview of week 6)",
+  "Pydantic `Answer{answer, sources, confidence 0-1}`; validate; feed the error back and retry (max 3)",
+  "Measure first-try valid rate with and without Ollama `format` schema",
+]
+assignment = "`labs/p2l1_sampling.py` + a schema guard wrapped around your week 2 pipeline."
+acceptance = [
+  "Greedy output matches `generate()` token-for-token",
+  "Cache vs no-cache timing table",
+  "First-try / after-retry valid rates over the golden set, with and without `format`",
+  "ADR-0003: constrained decoding vs validate-and-retry",
+]
+questions = [
+  "A stakeholder wants 'creative but accurate'. Explain temperature and top-p to them without math.",
+  "Where should schema validation live in a pipeline, and what happens on the third failure?",
+]
+[[week.quiz]]
+q = "Applying temperature T < 1 (logits / T) makes the distribution:"
+options = ["Flatter", "Sharper (more peaked)", "Uniform", "Unchanged"]
+answer = 1
+why = "Dividing by T < 1 widens gaps between logits, so softmax concentrates mass on the top tokens."
+[[week.quiz]]
+q = "Top-p = 0.9 means sampling from:"
+options = ["The 90 most likely tokens", "The smallest set of tokens whose cumulative probability >= 0.9", "Tokens with probability >= 0.9", "A random 90% of the vocabulary"]
+answer = 1
+why = "Nucleus sampling adapts the candidate set size to how confident the model is."
+[[week.quiz]]
+q = "Your greedy loop diverges from `generate(do_sample=False)`. Most likely cause:"
+options = ["CPU vs GPU", "The model is random at temperature 0", "Prompt formatting (chat template) or generation_config defaults such as repetition_penalty differ", "Python version"]
+answer = 2
+why = "`generate()` silently applies the model's generation_config; check it and apply the same chat template."
+[[week.quiz]]
+q = "Constrained decoding (`format` with a JSON schema) guarantees:"
+options = ["Correct content", "Schema-shaped, parseable output, but not correct content", "No hallucinations", "Faster generation"]
+answer = 1
+why = "Shape is guaranteed; semantics (e.g. confidence matches reality, sources exist) still need validation."
+
+[[week]]
+n = 4
+phase = "Phase 1: Foundations -> Stack 1"
+title = "JSON-RPC stdio tools + STITCH Stack 1"
+levels = "P5 L1 · Stack 1"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Understand the MCP wire protocol by writing it by hand",
+  "Stack 1: chunks + BM25 + ReAct loop + stdio tools + schema guard",
+]
+reading = [
+  "JSON-RPC 2.0 specification (jsonrpc.org)",
+  "MCP specification: Lifecycle, Transports (stdio), Tools (modelcontextprotocol.io)",
+  "Yao et al. (2022): ReAct: Synergizing Reasoning and Acting in Language Models",
+]
+tasks = [
+  "Raw stdio server: newline-delimited JSON-RPC; `initialize`, `notifications/initialized`, `tools/list`, `tools/call`",
+  "Tools: `calculate` (ast-whitelisted arithmetic, never `eval`) and `read_document` (confined to corpus/)",
+  "Client that spawns the server as a subprocess and does the handshake",
+  "Rewrite the server with the official MCP Python SDK (FastMCP); same client must still work",
+  "`pipelines/stack1.py`: ReAct loop (search / read / calculate) -> Pydantic-validated final answer",
+]
+assignment = "Stack 1, end to end, measured."
+acceptance = [
+  "`calculate` rejects `__import__('os')`; `read_document('../../etc/passwd')` is refused",
+  "Raw server and SDK server both pass the same client test",
+  "Stack 1 eval vs chunk_bm25 vs baseline; if Stack 1 is worse, the ADR explains why",
+  "ADR-0004: tool protocol and tool security",
+]
+questions = [
+  "A client asks why MCP instead of plain function-calling in app code. Give two reasons for and one against.",
+  "Write a threat model for a tool that reads files on behalf of an LLM.",
+]
+[[week.quiz]]
+q = "A JSON-RPC message without an `id` is:"
+options = ["Invalid", "A notification: no response is sent", "A batch", "An error"]
+answer = 1
+why = "`notifications/initialized` is an example; replying to it is a protocol bug."
+[[week.quiz]]
+q = "Why must an MCP stdio server never print logs to stdout?"
+options = ["It is slow", "stdout is the protocol channel; stray output corrupts the message stream", "The spec forbids logging", "stdout is buffered"]
+answer = 1
+why = "Log to stderr. A single stray print breaks the client's JSON parser."
+[[week.quiz]]
+q = "Correct start of an MCP session:"
+options = ["tools/list -> initialize", "initialize request -> response -> notifications/initialized -> normal requests", "tools/call directly", "Server sends initialize to client"]
+answer = 1
+why = "Capability negotiation happens first; only then are normal requests allowed."
+[[week.quiz]]
+q = "Safest way to implement the calculator tool:"
+options = ["eval() with empty globals", "Parse with `ast` and allow only number literals and arithmetic operator nodes", "exec() in a thread", "Regex-check then eval()"]
+answer = 1
+why = "Restricted eval is escapable via attribute chains; an AST allow-list cannot execute anything you did not permit."
+
+# ─────────────────────────────── PHASE 2 ───────────────────────────────
+[[week]]
+n = 5
+phase = "Phase 2: Retrieval & Sizing -> Stack 2"
+title = "Hybrid search + Reciprocal Rank Fusion"
+levels = "P1 L2"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Dense + sparse retrieval fused with RRF",
+  "Prove where each retriever fails, by question type",
+]
+reading = [
+  "Cormack, Clarke & Buettcher (2009): Reciprocal Rank Fusion outperforms Condorcet and individual rank learning methods",
+  "sentence-transformers docs: semantic search; BGE model card (bge-small-en-v1.5)",
+  "MTEB leaderboard: how to read it for model selection",
+]
+tasks = [
+  "Embed chunks (bge-small via sentence-transformers, or `nomic-embed-text` via Ollama `/api/embed`); cache to disk",
+  "Brute-force cosine over a numpy matrix (no vector DB yet)",
+  "RRF with k=60 over BM25 + dense rankings",
+  "Eval three pipelines: bm25, dense, hybrid; break down by question type",
+]
+assignment = "`pipelines/hybrid.py` + the identifier-vs-concept evidence table."
+acceptance = [
+  "hit@5 table: {bm25, dense, hybrid} x {identifier, concept}",
+  "At least one documented question where dense fails and hybrid succeeds",
+  "ADR-0005, including the corpus size at which you would add a vector DB",
+]
+questions = [
+  "A client already bought a vector DB. Which of their queries will fail, and how do you prove it in one day?",
+  "At what corpus size / QPS do you introduce an ANN index (HNSW), and what recall do you trade?",
+]
+[[week.quiz]]
+q = "Why does RRF fuse ranks instead of raw scores?"
+options = ["Ranks are faster to sort", "BM25 scores and cosine similarities are on incomparable scales; ranks need no normalization", "Scores are always negative", "It is required for BM25"]
+answer = 1
+why = "Score normalization is fragile and query-dependent; rank fusion sidesteps it."
+[[week.quiz]]
+q = "k=60. Doc A is rank 1 in one list only; doc B is rank 10 in both lists. Which scores higher?"
+options = ["A (1/61 = 0.0164)", "B (2/70 = 0.0286)", "Tie", "Cannot tell"]
+answer = 1
+why = "RRF rewards agreement between retrievers; large k flattens the bonus for being first."
+[[week.quiz]]
+q = "Dense retrieval tends to miss 'error code E-4012' because:"
+options = ["Embeddings are too long", "Embeddings capture meaning, not exact string identity; rare identifiers get fragmented by the tokenizer", "Cosine similarity cannot handle digits", "The model is too small"]
+answer = 1
+why = "This is exactly the gap BM25 fills: exact rare tokens get high IDF."
+[[week.quiz]]
+q = "For ~5k chunks on a laptop, a sensible vector store is:"
+options = ["A managed vector DB", "A numpy matrix with brute-force cosine", "A graph database", "Elasticsearch cluster"]
+answer = 1
+why = "5k x 384 floats is ~7.5 MB; a matrix multiply takes milliseconds. Add infrastructure when numbers demand it."
+
+[[week]]
+n = 6
+phase = "Phase 2: Retrieval & Sizing -> Stack 2"
+title = "KV cache & deployment sizing calculator"
+levels = "P2 L2 [Deep]"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Answer 'what hardware for N users?' with math you can defend",
+  "Validate the calculator against real measurements",
+]
+reading = [
+  "Ainslie et al. (2023): GQA: Training Generalized Multi-Query Transformer Models",
+  "Databricks (2023): LLM Inference Performance Engineering: Best Practices",
+  "`config.json` of Qwen2.5-3B-Instruct and Llama-3.1-8B on Hugging Face",
+]
+tasks = [
+  "`tools/sizing.py`: read HF config.json -> layers, KV heads, head_dim",
+  "Weights: FP16 (16 bpw), Q8_0 (~8.5 bpw), Q4_K_M (~4.8 bpw), AWQ 4-bit",
+  "KV = 2 x b x s x l x h_kv x d x p; plus ~10-20% runtime overhead",
+  "Outputs: weights GB, KV GB per sequence, max concurrency for a given GPU, OOM point",
+  "Validate with `ollama ps` for qwen2.5:3b at num_ctx 2048 vs 8192",
+  "Sizing memo: 50 internal users, 8k context, 7-8B model",
+]
+assignment = "Sizing calculator + a one-page sizing memo for a fictional client."
+acceptance = [
+  "Prediction within 15% of `ollama ps`",
+  "Llama-3.1-8B at 8k context reports 1 GiB KV per sequence (FP16)",
+  "Memo recommends a GPU class with headroom and states assumptions",
+  "ADR-0006",
+]
+questions = [
+  "Client: '200 concurrent users on one 24 GB GPU, 7B model, 32k context.' Walk through the math and your counter-proposal.",
+  "When does quantizing the KV cache beat quantizing weights further?",
+]
+[[week.quiz]]
+q = "Llama-3.1-8B: 32 layers, 8 KV heads, head_dim 128, FP16 KV. KV cache per token:"
+options = ["32 KiB", "128 KiB", "512 KiB", "1 MiB"]
+answer = 1
+why = "2 x 32 x 8 x 128 x 2 bytes = 131,072 B. With 32 KV heads (no GQA) it would be 512 KiB: the classic mistake."
+[[week.quiz]]
+q = "Same model, one sequence at 8,192 tokens:"
+options = ["128 MiB", "512 MiB", "1 GiB", "4 GiB"]
+answer = 2
+why = "128 KiB x 8192 = 1 GiB. Concurrency multiplies this: 20 users at 8k = 20 GiB of KV alone."
+[[week.quiz]]
+q = "Single-stream decoding is memory-bandwidth bound because:"
+options = ["The GPU is too slow", "Every token requires reading all weights while doing few FLOPs per byte", "The KV cache is on disk", "Tokenization is slow"]
+answer = 1
+why = "Low arithmetic intensity. Batching raises FLOPs per byte read, which is why throughput rises with batch size."
+[[week.quiz]]
+q = "An 8B model at Q4_K_M takes roughly:"
+options = ["2 GB", "~4.9 GB", "8 GB", "16 GB"]
+answer = 1
+why = "8.0e9 params x ~4.8 bits / 8 = ~4.8-4.9 GB, matching Ollama's llama3.1:8b download."
+
+[[week]]
+n = 7
+phase = "Phase 2: Retrieval & Sizing -> Stack 2"
+title = "RAG triad evaluator"
+levels = "P4 L2"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Score context relevance, faithfulness, answer relevance per query",
+  "Know how far to trust the judge",
+]
+reading = [
+  "Es et al. (2023): RAGAS: Automated Evaluation of Retrieval Augmented Generation",
+  "TruLens docs: the RAG triad",
+  "Zheng et al. (2023): Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena (section on biases)",
+]
+tasks = [
+  "Judge prompts returning JSON {score 0-1, reason} for each dimension",
+  "Faithfulness via claim decomposition: supported claims / total claims",
+  "API judge (e.g. Claude Haiku 4.5) and local 3B judge, same prompts",
+  "Hand-label 20 answers; compute judge-human agreement for both judges",
+  "Add an optional `--judge` flag to the harness; compute cost per 40-question run",
+]
+assignment = "Triad scorer integrated into the harness, with a validated judge."
+acceptance = [
+  "Agreement numbers for API vs local judge against your labels",
+  "Triad scores for the hybrid pipeline",
+  "Cost per run stated in the ADR",
+  "ADR-0007",
+]
+questions = [
+  "A client wants one 'quality score' on a dashboard. What do you give them and what do you warn them about?",
+  "Estimate monthly judge cost for 10k queries/day sampled at 5%.",
+]
+[[week.quiz]]
+q = "Context relevance high, faithfulness low. Where is the problem?"
+options = ["Retrieval", "Generation: the model added claims not in the context", "The golden set", "Embeddings"]
+answer = 1
+why = "Retrieval delivered; fix prompting, model choice or decoding rather than retrieval."
+[[week.quiz]]
+q = "Context relevance low, answer relevance high, means:"
+options = ["Perfect system", "The model is answering from parametric memory, not the retrieved context", "The judge is broken", "Too many chunks"]
+answer = 1
+why = "It might even be right, but it is ungrounded and unverifiable, which is unacceptable in most enterprise settings."
+[[week.quiz]]
+q = "A documented LLM-as-judge bias:"
+options = ["Prefers shorter answers", "Verbosity bias: favours longer answers", "Ignores formatting", "Always scores 0.5"]
+answer = 1
+why = "Also position bias and self-preference. Mitigate with rubrics, swapped orderings and human spot checks."
+[[week.quiz]]
+q = "Why validate the judge against human labels?"
+options = ["Legal requirement", "The judge is a model with its own error; an unvalidated metric may track something other than quality", "To make it faster", "To fine-tune it"]
+answer = 1
+why = "A metric you have not validated is a number, not a measurement."
+
+[[week]]
+n = 8
+phase = "Phase 2: Retrieval & Sizing -> Stack 2"
+title = "Dynamic MCP discovery + STITCH Stack 2"
+levels = "P5 L2 · Stack 2"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "An agent that uses tools it has never seen",
+  "Stack 2: hybrid retrieval + dynamic tools + triad scoring",
+]
+reading = [
+  "MCP specification: Tools (inputSchema, results, errors)",
+  "Ollama docs: tool calling",
+  "MCP security best practices (modelcontextprotocol.io)",
+]
+tasks = [
+  "Generic client: connect to any stdio server, `tools/list` -> convert inputSchema to Ollama `tools`",
+  "Loop: model tool_calls -> validate args against schema -> `tools/call` -> result back to model",
+  "Test against your week 4 server and a new one (SQLite server you write with FastMCP)",
+  "Measure tool-call validity over 20 tasks; repeat with 30 tools exposed",
+  "`pipelines/stack2.py` and a full eval",
+]
+assignment = "Stack 2, measured against Stack 1."
+acceptance = [
+  "Agent drives the SQLite server with zero code changes",
+  "Tool-call validity: 3-tool vs 30-tool exposure",
+  "Stack 2 vs Stack 1 table (answer_acc, hit@5, triad, p50/p95)",
+  "ADR-0008",
+]
+questions = [
+  "How would you govern which MCP servers employees may connect to their agents?",
+  "Stack 2 vs Stack 1: which improvement would you pitch to a CFO, and with which number?",
+]
+[[week.quiz]]
+q = "For each tool, `tools/list` returns:"
+options = ["Source code", "name, description, inputSchema (JSON Schema)", "An OpenAPI file", "Only the name"]
+answer = 1
+why = "The schema is what the client converts to the model's native tool format."
+[[week.quiz]]
+q = "Exposing 30+ tools to a 3B model typically:"
+options = ["Improves accuracy", "Lowers tool-selection accuracy and burns context; filter tools before exposing them", "Has no effect", "Crashes Ollama"]
+answer = 1
+why = "Tool routing (retrieve the relevant tools first) is the standard mitigation."
+[[week.quiz]]
+q = "The model sends arguments that violate inputSchema. Best handling:"
+options = ["Call the tool anyway", "Validate first; return the validation error as the tool result so the model can correct; cap retries", "Crash", "Silently drop the call"]
+answer = 1
+why = "Errors as observations let the model self-correct; the cap prevents loops."
+[[week.quiz]]
+q = "A risk specific to dynamic tool discovery:"
+options = ["Slow JSON parsing", "Tool descriptions are untrusted input and can carry prompt injection ('tool poisoning')", "Too few tools", "Schema versioning"]
+answer = 1
+why = "The model reads descriptions as instructions. Allow-list servers and review descriptions."
+
+# ─────────────────────────────── PHASE 3 ───────────────────────────────
+[[week]]
+n = 9
+phase = "Phase 3: Latency & Safety -> Stack 3"
+title = "Cross-encoder re-ranking"
+levels = "P1 L3"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Two-stage retrieval: broad recall, then precise ranking",
+  "A quality-vs-latency curve you can show a client",
+]
+reading = [
+  "Nogueira & Cho (2019): Passage Re-ranking with BERT",
+  "sentence-transformers docs: Cross-Encoders, retrieve & re-rank",
+]
+tasks = [
+  "Hybrid retrieves N candidates -> `cross-encoder/ms-marco-MiniLM-L-6-v2` -> keep 5",
+  "Sweep N in {10, 20, 50}: hit@5, answer_acc, added latency",
+  "Measure per-pair scoring cost on your CPU",
+]
+assignment = "`pipelines/rerank.py` + a quality/latency curve."
+acceptance = [
+  "Curve table for N = 10/20/50",
+  "Chosen N justified by a stated latency budget",
+  "ADR-0009",
+]
+questions = [
+  "The client's p95 budget is 1.5 s. How do you decide N, and whether to re-rank at all?",
+  "When would you replace a cross-encoder with an LLM-based re-ranker?",
+]
+[[week.quiz]]
+q = "Bi-encoder vs cross-encoder:"
+options = ["Same thing", "Bi-encoder embeds query and doc separately (docs precomputable); cross-encoder reads the pair jointly (more accurate, per-query cost)", "Cross-encoder is faster", "Bi-encoder needs a GPU"]
+answer = 1
+why = "That cost profile is why cross-encoders only re-rank a short list."
+[[week.quiz]]
+q = "Re-ranking cannot fix:"
+options = ["Bad ordering", "A relevant doc that first-stage retrieval never returned", "Near-duplicates", "Long chunks"]
+answer = 1
+why = "Stage 1 recall is the ceiling. Measure recall@N before tuning the re-ranker."
+[[week.quiz]]
+q = "Going from N=50 to N=100 candidates roughly:"
+options = ["Halves re-rank latency", "Doubles re-rank latency", "No change", "Squares latency"]
+answer = 1
+why = "One forward pass per (query, doc) pair: linear in N."
+[[week.quiz]]
+q = "ms-marco cross-encoder scores are:"
+options = ["Calibrated probabilities", "Relevance logits comparable within a query, not calibrated across queries", "Cosine similarities", "BM25 scores"]
+answer = 1
+why = "A fixed 'relevance threshold' needs calibration on your data."
+
+[[week]]
+n = 10
+phase = "Phase 3: Latency & Safety -> Stack 3"
+title = "Speculative decoding"
+levels = "P2 L3 [Working]"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Implement draft-and-verify; measure, do not assume, the speedup",
+]
+reading = [
+  "Leviathan, Kalman & Matias (2023): Fast Inference from Transformers via Speculative Decoding",
+  "Chen et al. (2023): Accelerating Large Language Model Decoding with Speculative Sampling",
+  "Hugging Face blog (2023): Assisted Generation",
+]
+tasks = [
+  "Greedy speculative loop: Qwen2.5-0.5B drafts k tokens; Qwen2.5-1.5B verifies in one forward pass",
+  "Accept the longest matching prefix + the target's next token",
+  "Check output == target-alone greedy output",
+  "Sweep k = 2..8: acceptance rate and tokens/s; compare with HF `assistant_model`",
+]
+assignment = "`labs/p2l3_speculative.py` + measured table + explanation of the CPU result."
+acceptance = [
+  "Output identical to target greedy",
+  "Acceptance rate and tok/s for each k",
+  "ADR-0010 explains the result, positive or negative",
+]
+questions = [
+  "A latency-sensitive chatbot at low concurrency: recommend speculative decoding? What about a high-throughput batch service?",
+  "How would you pick a draft model for a client's fine-tuned target?",
+]
+[[week.quiz]]
+q = "Greedy speculative decoding gives the same output as the target alone because:"
+options = ["The draft is accurate", "Every accepted token equals the target's argmax for the same prefix", "Temperature is 0", "It skips tokens"]
+answer = 1
+why = "The target checks every token; the draft only changes how many tokens are checked per pass."
+[[week.quiz]]
+q = "Speedup depends mostly on:"
+options = ["Vocabulary size", "Acceptance rate and the draft/target cost ratio", "Prompt length only", "Disk speed"]
+answer = 1
+why = "High acceptance + cheap draft = big win. Low acceptance wastes draft compute."
+[[week.quiz]]
+q = "On CPU with a 0.5B draft and 1.5B target, speedup is often small because:"
+options = ["CPUs lack caches", "The cost ratio is only ~3x and verifying k tokens on CPU is not nearly 'free' as it is on an idle GPU", "Qwen does not support it", "Tokenizers differ"]
+answer = 1
+why = "On a GPU, decoding is bandwidth-bound, so checking k tokens costs about the same as one; on CPU less so."
+[[week.quiz]]
+q = "Hard requirement for draft and target:"
+options = ["Same size", "Same tokenizer / vocabulary", "Same training data", "Same quantization"]
+answer = 1
+why = "Token IDs must mean the same thing for verification to work."
+
+[[week]]
+n = 11
+phase = "Phase 3: Latency & Safety -> Stack 3"
+title = "Semantic guardrails & red-teaming"
+levels = "P4 L3"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "An inbound/outbound guard with measured block and false-positive rates",
+]
+reading = [
+  "OWASP Top 10 for LLM Applications (2025 edition)",
+  "Greshake et al. (2023): Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection",
+  "Simon Willison (2025): The lethal trifecta for AI agents",
+]
+tasks = [
+  "Red-team set: 40 attacks (direct, indirect via a poisoned corpus doc, role-play jailbreak, PII exfiltration) + 40 benign",
+  "Inbound: embedding similarity to attack exemplars with a threshold",
+  "Outbound: regex masking for emails, phones, card numbers (Luhn-checked)",
+  "Plant an instruction-carrying doc in the corpus; test indirect injection end to end",
+  "Sweep threshold: block rate vs false-positive rate",
+]
+assignment = "`guard/` proxy + red-team report."
+acceptance = [
+  "Block rate and FPR at three thresholds",
+  "Indirect injection result documented, with the control that actually stops it",
+  "ADR-0011",
+]
+questions = [
+  "A bank wants 'guaranteed no prompt injection'. What can you promise, and which architectural controls do you offer instead?",
+  "Where do you mask PII: before the LLM, after, or both? Why?",
+]
+[[week.quiz]]
+q = "Indirect prompt injection is:"
+options = ["A user typing 'ignore previous instructions'", "Malicious instructions arriving via retrieved content or tool output", "SQL injection", "A jailbreak via role-play"]
+answer = 1
+why = "The user may be innocent; the attack rides in on data the agent reads."
+[[week.quiz]]
+q = "Why is a similarity-based guard insufficient alone?"
+options = ["Too slow", "Paraphrased or novel attacks evade it; it is a probabilistic filter, so you also need least privilege and isolation", "It blocks everything", "Embeddings are private"]
+answer = 1
+why = "Defence in depth: limit what a compromised model can do, not only what reaches it."
+[[week.quiz]]
+q = "The 'lethal trifecta' is:"
+options = ["Speed, cost, quality", "Access to private data + exposure to untrusted content + ability to communicate externally", "Three LLMs voting", "Prompt, context, tools"]
+answer = 1
+why = "Remove any one leg and data exfiltration via injection becomes much harder."
+[[week.quiz]]
+q = "Raising the similarity threshold (stricter match required to block):"
+options = ["Blocks more attacks", "Fewer false positives but more missed attacks", "No trade-off", "Raises latency"]
+answer = 1
+why = "Pick the operating point from the measured curve and the client's risk appetite."
+
+[[week]]
+n = 12
+phase = "Phase 3: Latency & Safety -> Stack 3"
+title = "Streamable HTTP MCP + STITCH Stack 3"
+levels = "P5 L3 · Stack 3"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Tools as network services with sessions and auth",
+  "Stack 3: guard -> hybrid -> re-rank -> model -> HTTP tools",
+]
+reading = [
+  "MCP specification: Transports (Streamable HTTP), Authorization",
+  "MCP Python SDK docs: running a Streamable HTTP server",
+]
+tasks = [
+  "Serve the week 4 tools over Streamable HTTP with the SDK",
+  "Talk to it with raw curl: POST JSON-RPC with `Accept: application/json, text/event-stream`; follow `Mcp-Session-Id`",
+  "Bearer-token auth; validate Origin; two concurrent clients",
+  "`pipelines/stack3.py`; full eval + red-team run",
+]
+assignment = "Stack 3 with network tools, measured for quality, latency and safety."
+acceptance = [
+  "curl transcript of initialize -> tools/list -> tools/call",
+  "Unauthenticated request rejected",
+  "Stack 3 vs Stack 2 table incl. red-team block rate",
+  "ADR-0012",
+]
+questions = [
+  "30 internal tools as MCP services: one server or one per team? Discuss auth, blast radius, versioning.",
+  "What changes when a tool server becomes multi-tenant?",
+]
+[[week.quiz]]
+q = "In Streamable HTTP, the client sends JSON-RPC messages via:"
+options = ["WebSocket", "HTTP POST to a single MCP endpoint; the server replies with JSON or an SSE stream", "gRPC", "Two endpoints: /sse and /messages"]
+answer = 1
+why = "The two-endpoint /sse + /messages design is the deprecated HTTP+SSE transport."
+[[week.quiz]]
+q = "Sessions in Streamable HTTP:"
+options = ["Cookies", "The server may assign `Mcp-Session-Id` at initialization; the client sends it on later requests", "IP address", "Not supported"]
+answer = 1
+why = "Sessions are optional, which allows stateless deployments behind load balancers."
+[[week.quiz]]
+q = "Why was HTTP+SSE replaced?"
+options = ["SSE is insecure", "It needed two endpoints and a long-lived connection; Streamable HTTP is simpler to deploy and can be stateless", "Browsers dropped SSE", "JSON-RPC changed"]
+answer = 1
+why = "Operational simplicity: plain POST works with standard infra."
+[[week.quiz]]
+q = "Why must a local Streamable HTTP server validate the Origin header?"
+options = ["Performance", "To prevent DNS rebinding attacks from web pages", "CORS caching", "Logging"]
+answer = 1
+why = "The spec requires it; also bind local servers to 127.0.0.1, not 0.0.0.0."
+
+# ─────────────────────────────── PHASE 4 ───────────────────────────────
+[[week]]
+n = 13
+phase = "Phase 4: Specialization (Kaggle/Colab)"
+title = "Evol-Instruct synthetic data"
+levels = "P3 L1 [Working]"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "500 clean instruction-response pairs for one narrow task",
+]
+reading = [
+  "Xu et al. (2023): WizardLM: Empowering Large Language Models to Follow Complex Instructions",
+  "Wang et al. (2022): Self-Instruct",
+  "Qwen2.5 chat template / ChatML format",
+]
+tasks = [
+  "Task: 'answer from context as strict JSON `Answer{...}`' (reuses your schema)",
+  "30 seed prompts from your corpus; in-depth and in-breadth evolution via API",
+  "Filters: JSON valid, schema valid, length, dedupe (embedding cosine > 0.9)",
+  "Hold out 50 for test BEFORE training; track API cost",
+]
+assignment = "`data/train.jsonl` (450) + `data/test.jsonl` (50) in ChatML."
+acceptance = [
+  "Filter funnel: generated -> kept, with drop reasons",
+  "No near-duplicates across train/test",
+  "Cost stated; provider terms on training use checked",
+  "ADR-0013",
+]
+questions = [
+  "A client has 300 real support tickets. Synthetic data or labelling? What mix?",
+  "How do you show synthetic data did not teach the model wrong facts?",
+]
+[[week.quiz]]
+q = "In-depth vs in-breadth evolution:"
+options = ["Same", "In-depth makes an instruction harder (constraints, reasoning); in-breadth creates new, diverse instructions", "In-depth = more data", "In-breadth = longer answers"]
+answer = 1
+why = "Depth raises difficulty; breadth raises coverage. You need both."
+[[week.quiz]]
+q = "Why deduplicate synthetic data?"
+options = ["Saves disk", "Near-duplicates inflate the set, encourage overfitting and leak into the test split", "Required by ChatML", "Speeds tokenization"]
+answer = 1
+why = "Leakage makes held-out scores meaningless."
+[[week.quiz]]
+q = "When must the test split be held out?"
+options = ["After training", "Before training, and before any tuning decisions", "Never", "Only for DPO"]
+answer = 1
+why = "Otherwise you tune on the test set and overstate quality."
+[[week.quiz]]
+q = "An architect-level check before using API outputs as training data:"
+options = ["GPU type", "The provider's terms on using outputs to train models", "Python version", "Token count"]
+answer = 1
+why = "Some terms restrict using outputs to train competing models; check before you build a client pipeline on it."
+
+[[week]]
+n = 14
+phase = "Phase 4: Specialization (Kaggle/Colab)"
+title = "QLoRA adapter"
+levels = "P3 L2 [Working]"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Train an adapter on free GPU, serve it at home, measure the delta",
+]
+reading = [
+  "Hu et al. (2021): LoRA: Low-Rank Adaptation of Large Language Models",
+  "Dettmers et al. (2023): QLoRA: Efficient Finetuning of Quantized LLMs",
+  "Unsloth docs: Qwen2.5 notebook, GGUF export",
+]
+tasks = [
+  "Kaggle notebook: Qwen2.5-1.5B-Instruct, 4-bit, LoRA r=16, 1-3 epochs",
+  "Watch train vs held-out loss; stop at the knee",
+  "Eval on the 50 held-out: schema-valid rate and correctness, base vs adapter",
+  "Export GGUF Q4_K_M; `ollama create` with a Modelfile; plug into Stack 2",
+]
+assignment = "Adapter served in Ollama, Stack 2 re-measured with it."
+acceptance = [
+  "Base vs adapter table on held-out set",
+  "Stack 2 golden-set delta with the adapter",
+  "ADR-0014 includes a full TCO estimate",
+]
+questions = [
+  "Draft your decision tree: prompt vs RAG vs fine-tune.",
+  "What is the full TCO of a fine-tuned model for a client (data, training, eval, serving, retraining)?",
+]
+[[week.quiz]]
+q = "LoRA on a 4096 x 4096 matrix with r = 16 trains how many parameters?"
+options = ["16", "131,072", "16.7 M", "4096"]
+answer = 1
+why = "r(d + k) = 16 x 8192 = 131,072, about 0.8% of the 16.7 M in the full matrix."
+[[week.quiz]]
+q = "In QLoRA:"
+options = ["Everything is trained in 4-bit", "Base weights are frozen in 4-bit NF4; adapters train in higher precision", "Adapters are 4-bit", "No quantization"]
+answer = 1
+why = "Gradients flow through dequantized base weights into the small adapter matrices."
+[[week.quiz]]
+q = "Sign of overfitting on 450 examples:"
+options = ["Loss plateaus", "Train loss goes to ~0 while held-out quality drops", "Training is slow", "GPU memory rises"]
+answer = 1
+why = "Also: outputs parrot training phrasing on unrelated prompts."
+[[week.quiz]]
+q = "Fine-tuning is best suited for:"
+options = ["Injecting frequently changing facts", "Consistent format, style and behaviour", "Replacing retrieval", "Reducing context length"]
+answer = 1
+why = "Facts that change belong in retrieval; behaviour belongs in weights."
+
+[[week]]
+n = 15
+phase = "Phase 4: Specialization (Kaggle/Colab)"
+title = "DPO + swap into stacks"
+levels = "P3 L3 [Working]"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Preference-tune against a rubric; swap the models into Stacks 2 and 3",
+  "Publish your fine-tune vs RAG vs prompt framework",
+]
+reading = [
+  "Rafailov et al. (2023): Direct Preference Optimization: Your Language Model is Secretly a Reward Model",
+  "TRL docs: DPOTrainer",
+  "Ouyang et al. (2022): Training language models to follow instructions with human feedback (context)",
+]
+tasks = [
+  "Sample 4 completions per prompt from the SFT model",
+  "Deterministic rubric: schema valid, cites sources, length <= N, claims overlap context",
+  "Build {prompt, chosen, rejected}; DPO with beta = 0.1 on Kaggle",
+  "Measure rubric score, verbosity, golden set; swap into Stack 3",
+]
+assignment = "DPO model in Stack 3 + the decision-framework ADR."
+acceptance = [
+  "SFT vs DPO table, including at least one metric the rubric did NOT optimize",
+  "ADR-0015: prompt vs RAG vs fine-tune vs preference-tune decision framework",
+]
+questions = [
+  "A client wants the model to 'stop being verbose'. Prompting, SFT or DPO? Justify with cost.",
+  "How would you detect that preference tuning hurt factual accuracy?",
+]
+[[week.quiz]]
+q = "DPO avoids:"
+options = ["Training data", "A separate reward model and an RL loop (PPO)", "A reference model", "Tokenization"]
+answer = 1
+why = "It optimizes the policy directly on preference pairs with a closed-form loss."
+[[week.quiz]]
+q = "In DPO, a higher beta:"
+options = ["Lets the policy drift further", "Keeps the policy closer to the reference model", "Raises learning rate", "Has no effect"]
+answer = 1
+why = "beta weights the implicit KL constraint against the reference."
+[[week.quiz]]
+q = "The DPO reference model is typically:"
+options = ["A bigger model", "A frozen copy of the SFT model", "GPT-4", "Random weights"]
+answer = 1
+why = "Preferences are measured relative to where you started."
+[[week.quiz]]
+q = "Main risk of rubric-based preferences:"
+options = ["Too slow", "Reward hacking: the model learns rubric artefacts (e.g. very short answers) instead of quality", "Too few pairs", "Overflow"]
+answer = 1
+why = "Goodhart's law. Always track a metric the rubric does not directly reward."
+
+# ─────────────────────────────── PHASE 5 ───────────────────────────────
+[[week]]
+n = 16
+phase = "Phase 5: Graphs, Serving, Telemetry -> Stack 4"
+title = "Multi-hop GraphRAG"
+levels = "P1 L4"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Answer questions that need facts from several documents",
+]
+reading = [
+  "Edge et al. (2024): From Local to Global: A Graph RAG Approach to Query-Focused Summarization",
+  "NetworkX docs: traversal, ego_graph",
+]
+tasks = [
+  "LLM triple extraction per chunk with a JSON schema; store chunk id on every edge",
+  "Entity normalization: case, aliases, merge duplicates",
+  "Query: link question entities -> expand 2 hops -> gather chunks -> answer",
+  "Add 8 multi-hop golden questions; compare vs Stack 3 on that subset; record extraction cost",
+]
+assignment = "`pipelines/graphrag.py` with a multi-hop comparison."
+acceptance = [
+  "Multi-hop subset: GraphRAG vs Stack 3",
+  "Extraction token cost and time for the full corpus",
+  "ADR-0016, including when NOT to use GraphRAG",
+]
+questions = [
+  "A client asks for 'knowledge graph AI'. What questions reveal whether they need it?",
+  "How do you keep the graph fresh when documents change daily?",
+]
+[[week.quiz]]
+q = "GraphRAG helps most with:"
+options = ["Single-fact lookup", "Questions connecting facts across documents, or global summaries", "Exact identifiers", "Short corpora"]
+answer = 1
+why = "For simple lookups, hybrid + re-rank is cheaper and usually as good."
+[[week.quiz]]
+q = "The biggest practical cost of GraphRAG:"
+options = ["Graph storage", "LLM extraction over the whole corpus, repeated on updates", "Traversal time", "Visualization"]
+answer = 1
+why = "Extraction tokens dominate; incremental updates need design."
+[[week.quiz]]
+q = "Entity resolution matters because:"
+options = ["It is faster", "Variants ('Open AI', 'openai inc') become separate nodes and break paths", "NetworkX requires it", "It reduces tokens"]
+answer = 1
+why = "Unmerged aliases split the graph exactly where multi-hop needs it connected."
+[[week.quiz]]
+q = "Storing the chunk id on each edge enables:"
+options = ["Faster traversal", "Provenance: citing the source text behind each relation", "Smaller graphs", "Embedding reuse"]
+answer = 1
+why = "Graph answers without citations are ungroundable."
+
+[[week]]
+n = 17
+phase = "Phase 5: Graphs, Serving, Telemetry -> Stack 4"
+title = "Continuous batching sim + OpenTelemetry"
+levels = "P2 L4 [Working] · P4 L4"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "Understand why vLLM-class servers win on throughput",
+  "Trace every step of your stack",
+]
+reading = [
+  "Yu et al. (2022): Orca: A Distributed Serving System for Transformer-Based Generative Models (OSDI)",
+  "Kwon et al. (2023): Efficient Memory Management for LLM Serving with PagedAttention",
+  "OpenTelemetry: GenAI semantic conventions",
+  "Arize Phoenix docs: local tracing",
+]
+tasks = [
+  "asyncio simulator: random prompt/output lengths; prefill and decode step-cost model",
+  "Static vs continuous batching: throughput, p50/p95 latency, idle slots",
+  "Paged KV: 16-token block allocator vs contiguous pre-allocation; measure waste",
+  "Instrument Stack 3 with OTel spans (retrieve, rerank, llm, tool) + gen_ai token attributes; view in Phoenix",
+]
+assignment = "Simulator report + traced Stack 3."
+acceptance = [
+  "Throughput/latency table, static vs continuous",
+  "KV waste: paged vs contiguous",
+  "Screenshot of one full trace tree; p50/p95 per span",
+  "ADR-0017",
+]
+questions = [
+  "A client asks 'vLLM or Ollama for production?' Answer with throughput reasoning.",
+  "What are the top 5 signals on the on-call dashboard for an LLM app?",
+]
+[[week.quiz]]
+q = "Static batching wastes compute because:"
+options = ["Batches are too large", "The batch waits for its longest sequence; finished slots sit idle", "Prefill is slow", "KV cache is disabled"]
+answer = 1
+why = "Continuous batching admits new requests into freed slots at every step."
+[[week.quiz]]
+q = "PagedAttention mainly reduces:"
+options = ["FLOPs", "KV memory fragmentation and over-reservation, allowing more concurrent sequences", "Tokenization time", "Model size"]
+answer = 1
+why = "Blocks are allocated on demand instead of reserving max length up front."
+[[week.quiz]]
+q = "Trace vs span:"
+options = ["Same", "A trace is the tree for one request; a span is one timed operation in it", "A span contains traces", "Traces are logs"]
+answer = 1
+why = "Parent/child spans show where time and tokens went."
+[[week.quiz]]
+q = "Why p95/p99 rather than the mean for latency SLOs?"
+options = ["Easier to compute", "Tail latency is what users feel; means hide the tail", "Required by OTel", "Means are always higher"]
+answer = 1
+why = "LLM latency is heavy-tailed (long outputs, tool retries)."
+
+[[week]]
+n = 18
+phase = "Phase 5: Graphs, Serving, Telemetry -> Stack 4"
+title = "Enterprise MCP gateway & circuit breaker"
+levels = "P5 L4"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "One place where every tool call is authorized, limited, logged and can be cut off",
+]
+reading = [
+  "Martin Fowler: CircuitBreaker (martinfowler.com/bliki)",
+  "MCP specification: Authorization",
+  "OWASP LLM Top 10: Excessive Agency",
+]
+tasks = [
+  "Gateway: Streamable HTTP in, multiple upstream MCP servers out",
+  "Per-client tokens with tool allow-lists; token-bucket rate limit",
+  "Audit log JSONL: who, tool, args hash, status, latency",
+  "Circuit breaker per upstream: open after 5 consecutive failures, half-open after 30 s",
+  "Chaos test: kill an upstream; verify trip and recovery; spans in Phoenix",
+]
+assignment = "`gateway/` with a chaos-test transcript."
+acceptance = [
+  "Denied tool call for a client without permission",
+  "Breaker trips and recovers in the chaos test",
+  "ADR-0018, including how the gateway itself avoids being a single point of failure",
+]
+questions = [
+  "Design the approval flow for a destructive tool such as delete_customer.",
+  "The gateway is now a single point of failure. How do you deploy it?",
+]
+[[week.quiz]]
+q = "Circuit breaker half-open state:"
+options = ["All requests pass", "A limited trial request is allowed: success closes the breaker, failure reopens it", "All requests fail", "Requests are queued"]
+answer = 1
+why = "It probes recovery without flooding a sick upstream."
+[[week.quiz]]
+q = "A token bucket rate limiter:"
+options = ["Allows no bursts", "Allows bursts up to bucket size while enforcing an average rate", "Counts per day only", "Drops every other request"]
+answer = 1
+why = "Agents are bursty; a bucket tolerates that within a budget."
+[[week.quiz]]
+q = "Why log an args hash or redacted args rather than raw arguments?"
+options = ["Smaller logs", "Arguments can contain PII or secrets; audit logs are widely readable", "Hashes are faster", "JSON limits"]
+answer = 1
+why = "Keep enough to investigate without creating a second data leak."
+[[week.quiz]]
+q = "Main reason to centralize tools behind a gateway:"
+options = ["Fewer servers", "A single enforcement point for authz, limits, audit and a kill switch", "Lower latency", "Easier coding"]
+answer = 1
+why = "Otherwise every agent reimplements (or forgets) governance."
+
+[[week]]
+n = 19
+phase = "Phase 5: Graphs, Serving, Telemetry -> Stack 4"
+title = "STITCH Stack 4 + capstone proposal"
+levels = "Stack 4"
+status = "todo"
+hours = 0
+quiz_score = ""
+completed = ""
+notes = ""
+goals = [
+  "The full system, traced and governed",
+  "A client-style architecture proposal built from your ADRs",
+]
+reading = [
+  "Anthropic (2024): Building effective agents",
+  "Re-read all your ADRs",
+]
+tasks = [
+  "Supervisor: local 3B for classification/filtering, API model for orchestration",
+  "Route retrieval by question type: hybrid + rerank vs GraphRAG",
+  "All tools through the gateway; all spans to Phoenix",
+  "Full golden-set run across every pipeline; plot the improvement curve",
+  "Capstone: 3-4 page proposal for a fictional client, citing your measurements",
+]
+assignment = "Stack 4 + improvement curve + capstone proposal."
+acceptance = [
+  "One table: baseline -> Stack 1 -> 2 -> 3 -> 4 (quality, latency, cost)",
+  "Router accuracy measured on a labelled set",
+  "Proposal reviewed against your own ADR-0001 eval criteria",
+]
+questions = [
+  "You have 5 minutes with a CTO. What is on slide 1?",
+  "Which ADR would you reverse now, and why?",
+]
+[[week.quiz]]
+q = "Model tiering saves cost because:"
+options = ["Small models are more accurate", "Most sub-tasks (classify, extract, filter) go to a cheap model; the expensive model handles only hard reasoning", "API calls are free", "It removes retrieval"]
+answer = 1
+why = "Cost follows the distribution of task difficulty."
+[[week.quiz]]
+q = "When should you NOT go multi-agent?"
+options = ["Never", "When one agent with tools does the job; multi-agent adds latency, cost and failure modes", "Always use it", "Only for GraphRAG"]
+answer = 1
+why = "Start with the simplest thing that works and add complexity when measurements demand it."
+[[week.quiz]]
+q = "How do you know the router is working?"
+options = ["Trust it", "Measure it on a labelled routing eval set", "Check latency", "Count tokens"]
+answer = 1
+why = "A router is a classifier; evaluate it like one."
+[[week.quiz]]
+q = "The best single number to show a client for system improvement:"
+options = ["Embedding dimension", "Task-level outcome on a representative set, alongside cost and latency", "Number of agents", "hit@50"]
+answer = 1
+why = "Component metrics explain; outcome metrics sell and decide."
+
+[optional]
+items = [
+  "P3 L4: `mergekit` SLERP of Qwen2.5-Coder-0.5B-Instruct + Qwen2.5-0.5B-Instruct (runs on CPU); evaluate both skills",
+  "ColPali visual retrieval for table/image-heavy docs (Colab)",
+]
