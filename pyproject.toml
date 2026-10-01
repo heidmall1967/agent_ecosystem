@@ -1,0 +1,6 @@
+[project]
+name = "full-path"
+version = "0.1.0"
+description = "AI engineering learn-by-implementing path"
+requires-python = ">=3.12"
+dependencies = []

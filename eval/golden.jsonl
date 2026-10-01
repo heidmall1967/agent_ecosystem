@@ -1,0 +1,5 @@
+{"id": "q01", "type": "identifier", "question": "In the learning blueprint, what does RRF stand for?", "expected": ["reciprocal rank fusion"], "sources": ["blueprint.md"]}
+{"id": "q02", "type": "identifier", "question": "Which MCP transport replaced HTTP+SSE in the March 2025 spec, according to the blueprint?", "expected": ["streamable http"], "sources": ["blueprint.md"]}
+{"id": "q03", "type": "concept", "question": "In the blueprint's RAG triad, what are the three evaluation dimensions?", "expected": ["context relevance", "faithfulness", "answer relevance"], "sources": ["blueprint.md"]}
+{"id": "q04", "type": "identifier", "question": "Which cross-encoder model does the blueprint suggest for re-ranking?", "expected": ["ms-marco-minilm"], "sources": ["blueprint.md"]}
+{"id": "q05", "type": "concept", "question": "According to the blueprint, which graph library is used for GraphRAG instead of Neo4j, and why?", "expected": ["networkx", "ram"], "sources": ["blueprint.md"]}
