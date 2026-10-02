@@ -40,8 +40,8 @@ reading = [
 ]
 tasks = [
   "[x] Repo, uv project, eval harness, baseline pipeline",
-  "Pick a corpus you know well (20-100 docs): notes, internal docs, or a codebase",
-  "Write 40 golden questions: >=13 identifier, >=20 concept, a few multi-hop",
+  "[x] Corpus: MCP spec 2026-07-28 + Ollama docs (65 files, see corpus/SOURCES.txt)",
+  "Write 40 golden questions: >=13 identifier, >=20 concept, >=3 multi-hop; keep `uv run python -m eval.check_golden` clean",
   "Run the full baseline: `uv run python -m eval.harness baseline`",
   "Write ADR-0001: corpus choice and eval method (including its weaknesses)",
 ]
@@ -212,11 +212,12 @@ goals = [
 ]
 reading = [
   "JSON-RPC 2.0 specification (jsonrpc.org)",
-  "MCP specification: Lifecycle, Transports (stdio), Tools (modelcontextprotocol.io)",
+  "MCP specification 2026-07-28: Key Changes, Discovery, Transports (stdio), Tools (in your corpus/mcp/)",
   "Yao et al. (2022): ReAct: Synergizing Reasoning and Acting in Language Models",
 ]
 tasks = [
-  "Raw stdio server: newline-delimited JSON-RPC; `initialize`, `notifications/initialized`, `tools/list`, `tools/call`",
+  "Raw stdio server: newline-delimited JSON-RPC; `server/discover`, `tools/list`, `tools/call`; read protocol version from `_meta` on every request",
+  "Backward compatibility: also answer the legacy `initialize` handshake (pre-2026-07-28 clients are still most of the ecosystem)",
   "Tools: `calculate` (ast-whitelisted arithmetic, never `eval`) and `read_document` (confined to corpus/)",
   "Client that spawns the server as a subprocess and does the handshake",
   "Rewrite the server with the official MCP Python SDK (FastMCP); same client must still work",
@@ -237,17 +238,17 @@ questions = [
 q = "A JSON-RPC message without an `id` is:"
 options = ["Invalid", "A notification: no response is sent", "A batch", "An error"]
 answer = 1
-why = "`notifications/initialized` is an example; replying to it is a protocol bug."
+why = "`notifications/cancelled` is an example; replying to a notification is a protocol bug."
 [[week.quiz]]
 q = "Why must an MCP stdio server never print logs to stdout?"
 options = ["It is slow", "stdout is the protocol channel; stray output corrupts the message stream", "The spec forbids logging", "stdout is buffered"]
 answer = 1
 why = "Log to stderr. A single stray print breaks the client's JSON parser."
 [[week.quiz]]
-q = "Correct start of an MCP session:"
-options = ["tools/list -> initialize", "initialize request -> response -> notifications/initialized -> normal requests", "tools/call directly", "Server sends initialize to client"]
+q = "Under MCP 2026-07-28, how does a client learn a server's protocol versions and capabilities?"
+options = ["A mandatory initialize handshake", "Optionally via `server/discover`; every request also carries its protocol version and client capabilities in `_meta`", "GET /capabilities", "From the Mcp-Session-Id header"]
 answer = 1
-why = "Capability negotiation happens first; only then are normal requests allowed."
+why = "2026-07-28 made MCP stateless and removed initialize. Older servers still use it, so `server/discover` doubles as a compatibility probe."
 [[week.quiz]]
 q = "Safest way to implement the calculator tool:"
 options = ["eval() with empty globals", "Parse with `ast` and allow only number literals and arithmetic operator nodes", "exec() in a thread", "Regex-check then eval()"]
@@ -663,7 +664,7 @@ quiz_score = ""
 completed = ""
 notes = ""
 goals = [
-  "Tools as network services with sessions and auth",
+  "Tools as stateless network services with auth",
   "Stack 3: guard -> hybrid -> re-rank -> model -> HTTP tools",
 ]
 reading = [
@@ -672,13 +673,14 @@ reading = [
 ]
 tasks = [
   "Serve the week 4 tools over Streamable HTTP with the SDK",
-  "Talk to it with raw curl: POST JSON-RPC with `Accept: application/json, text/event-stream`; follow `Mcp-Session-Id`",
+  "Talk to it with raw curl: POST JSON-RPC with `Accept: application/json, text/event-stream` and the `Mcp-Method` / `Mcp-Name` headers",
+  "Run two server replicas behind one port; show any replica can serve any request (no sessions)",
   "Bearer-token auth; validate Origin; two concurrent clients",
   "`pipelines/stack3.py`; full eval + red-team run",
 ]
 assignment = "Stack 3 with network tools, measured for quality, latency and safety."
 acceptance = [
-  "curl transcript of initialize -> tools/list -> tools/call",
+  "curl transcript of server/discover -> tools/list -> tools/call",
   "Unauthenticated request rejected",
   "Stack 3 vs Stack 2 table incl. red-team block rate",
   "ADR-0012",
@@ -693,10 +695,10 @@ options = ["WebSocket", "HTTP POST to a single MCP endpoint; the server replies 
 answer = 1
 why = "The two-endpoint /sse + /messages design is the deprecated HTTP+SSE transport."
 [[week.quiz]]
-q = "Sessions in Streamable HTTP:"
-options = ["Cookies", "The server may assign `Mcp-Session-Id` at initialization; the client sends it on later requests", "IP address", "Not supported"]
+q = "In the 2026-07-28 Streamable HTTP transport, a server that needs state across calls uses:"
+options = ["The Mcp-Session-Id header", "Explicit server-minted handles passed as ordinary tool arguments", "Cookies", "Sticky load-balancer sessions"]
 answer = 1
-why = "Sessions are optional, which allows stateless deployments behind load balancers."
+why = "Protocol-level sessions were removed, so any replica can serve any request; state becomes explicit in tool arguments."
 [[week.quiz]]
 q = "Why was HTTP+SSE replaced?"
 options = ["SSE is insecure", "It needed two endpoints and a long-lived connection; Streamable HTTP is simpler to deploy and can be stateless", "Browsers dropped SSE", "JSON-RPC changed"]

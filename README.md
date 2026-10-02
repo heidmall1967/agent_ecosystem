@@ -16,7 +16,8 @@ uv run python -m eval.harness baseline      # run a pipeline over the golden set
 LLM_MODEL=qwen2.5-fast:latest uv run python -m eval.harness baseline --limit 2
 ```
 
-Golden set row: `{"id", "type": "identifier|concept|multi-hop", "question", "expected": [keywords], "sources": [file names]}`.
+Golden set row: `{"id", "type": "identifier|concept|multi-hop", "question", "expected": [keywords], "sources": [paths relative to corpus/]}`.
+Validate while writing: `uv run python -m eval.check_golden`.
 Answer counts as correct when every expected keyword appears (case-insensitive). `hit@k` is
 whether a gold source file is among the first k retrieved sources (null for no-retrieval pipelines).
 

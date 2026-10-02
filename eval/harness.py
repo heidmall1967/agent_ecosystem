@@ -21,8 +21,9 @@ def keyword_recall(answer: str, expected: list[str]) -> float:
 def hit_at_k(sources: list[str], gold: list[str], k: int) -> float | None:
     if not sources:
         return None  # pipeline does no retrieval
-    top = [Path(s).name for s in sources[:k]]
-    return float(any(Path(g).name in top for g in gold))
+    # gold paths are relative to corpus/ (e.g. "mcp/server/tools.mdx"); many files share a name
+    top = [Path(s).as_posix() for s in sources[:k]]
+    return float(any(t == g or t.endswith("/" + g) for g in gold for t in top))
 
 
 def percentile(xs: list[float], p: float) -> float:

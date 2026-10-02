@@ -1,0 +1,3 @@
+Corpus snapshot taken 2026-10-02:
+- mcp/: modelcontextprotocol/modelcontextprotocol docs/specification/2026-07-28 (3098fe9)
+- ollama/: ollama/ollama docs (b0c1ca4), integrations/ excluded

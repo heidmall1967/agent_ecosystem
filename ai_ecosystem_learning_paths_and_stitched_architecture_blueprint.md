@@ -146,13 +146,13 @@ The goal is **decision-making fluency**, not research-grade reimplementation. Ea
 
 * **Level 1 (Foundations): JSON-RPC & Stdio Tool Mechanics**
   * *Objective:* Understand the wire protocol behind agent extensions.
-  * *Deliverable:* A raw Python server reading JSON-RPC 2.0 from `stdin` and writing responses to `stdout` (`initialize`, `tools/list`, `tools/call`), then the same server rewritten with the official MCP Python SDK.
+  * *Deliverable:* A raw Python server reading JSON-RPC 2.0 from `stdin` and writing responses to `stdout` (`server/discover`, `tools/list`, `tools/call`, plus the legacy `initialize` handshake for pre-2026-07-28 clients), then the same server rewritten with the official MCP Python SDK. *(MCP 2026-07-28 made the protocol stateless: no handshake; every request carries its protocol version in `_meta`.)*
 * **Level 2 (Intermediate): Dynamic MCP Discovery Agent**
   * *Objective:* Decouple agents from hardcoded functions. Query `tools/list`, convert JSON schemas to the model's tool format, call dynamically.
   * *Deliverable:* An agent that drives an MCP server it has never seen (official filesystem server, or your own SQLite server) without code changes.
 * **Level 3 (Advanced): Remote Transport (Streamable HTTP)**
   * *Objective:* Host MCP tools as network services. *(The older HTTP+SSE transport was deprecated in the March 2025 MCP spec; Streamable HTTP replaces it.)*
-  * *Deliverable:* A Streamable HTTP MCP server + client with session management and authentication, multiple concurrent agent sessions.
+  * *Deliverable:* A Streamable HTTP MCP server + client with authentication, serving many concurrent agents statelessly (2026-07-28 removed protocol sessions and `Mcp-Session-Id`).
 * **Level 4 (Frontier): Enterprise MCP Gateway & Circuit Breaker**
   * *Objective:* Production tool governance.
   * *Deliverable:* A central gateway with authN/authZ per tool, rate limiting, audit logging, and circuit breakers (trip on consecutive failures, half-open recovery).
